@@ -1,0 +1,16 @@
+name: ${baseCoordinates}
+version: ${version}
+main: eu.xap3y.xalib.XaLib
+api-version: '1.20'
+authors: [ XAP3Y ]
+description: XaLib for xap3y plugins
+website: https://xap3y.eu
+commands:
+  xainvoke:
+    description: Invoke methods, modify fields, or export and redefine plugin classes (console or authorized admins)
+    usage: /xainvoke help | export <Plugin> <Class> [overwrite] | redefine <Plugin> <Class> | <Class#method> [arguments...] | field <PluginClass#field.path> <view|clear|add|remove|get|put|removeKey|set|replace> [Type=value ...] [Call=method(...)]
+
+permissions:
+  xalib.command.xainvoke:
+    description: Allows invoking methods and modifying live plugin state with xainvoke
+    default: op

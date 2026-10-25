@@ -1,0 +1,74 @@
+name: Build XaLib plugin
+run-name: Build XaLib plugin
+on: [push]
+jobs:
+    Build-latest-jar:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Build | Prepare packages
+              run: |
+                  apt update; apt-get install -y wget software-properties-common apt-transport-https gpg
+                  wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor | tee /etc/apt/trusted.gpg.d/adoptium.gpg > /dev/null
+                  echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list
+                  apt update; apt-get install -y temurin-21-jdk
+            - name: Prepare | Setup git
+              env:
+                  GIT_USERNAME: ${{ vars.GIT_USERNAME }}
+                  GIT_EMAIL: ${{ vars.GIT_EMAIL }}
+              run: |
+                  git config --global user.name "$GIT_USERNAME"
+                  git config --global user.email "$GIT_EMAIL"
+            - name: Check out repository code
+              uses: actions/checkout@v4
+            - name: Prepare | Read release version
+              id: version
+              run: |
+                  version=$(awk '/^[[:space:]]*version[[:space:]]*=/ { sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]]*$/, ""); print; exit }' gradle.properties)
+                  if [ -z "$version" ]; then
+                      echo "Missing or empty version in gradle.properties" >&2
+                      exit 1
+                  fi
+                  echo "📦 Plugin version: $version"
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
+            - name: Prepare | Determine release tag
+              id: release_tag
+              run: |
+                branch="${GITHUB_REF_NAME}"
+                version="${{ steps.version.outputs.version }}"
+                
+                if [[ "$branch" == "main" || "$branch" == "master" || "$branch" == "v2" ]]; then
+                    tag="v${version}"
+                else
+                    tag="${branch}-v${version}"
+                fi
+                
+                echo "🌿 Branch: $branch"
+                echo "📦 Version: $version"
+                echo "🏷️ Release tag: $tag"
+                
+                echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            - name: Build | Gradle build
+              run: |
+                  ls -lah
+                  chmod +x ./gradlew
+                  ./gradlew clean build && ls -lah && ls */ -lah && ls */* -lah&& ls */*/* -lah
+            - name: Release
+              uses: https://git.lipovcan.cz/Upstream/gitea-release-action.git@v1
+              with:
+                  tag_name: "${{ steps.release_tag.outputs.tag }}"
+                  files: |-
+                      build/libs/*.jar
+            - name: Build | publish jar
+              env:
+                  FTP_HOST: ${{ secrets.FTP_HOST }}
+                  FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+                  FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+              run: |
+                  for jar in build/libs/*.jar; do
+                    [ -f "$jar" ] || exit 1
+                  
+                    curl --fail --show-error \
+                      --user "$FTP_USERNAME:$FTP_PASSWORD" \
+                      --upload-file "$jar" \
+                      "ftp://${FTP_HOST}/$(basename "$jar")"
+                  done
